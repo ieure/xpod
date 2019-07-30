@@ -1,8 +1,10 @@
 pipeline {
-    properties([pipelineTriggers([[$class: 'PeriodicFolderTrigger', interval: '1d']])])
-
     agent {
         label 'buster'
+    }
+
+    triggers {
+        cron('@daily')
     }
 
     stages {

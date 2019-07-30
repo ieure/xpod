@@ -1,3 +1,4 @@
+// xpod creates podcast feeds for XRay.fm shows.
 package main
 
 import (
@@ -13,6 +14,7 @@ import (
 var t_site = "https://xray.fm"
 var t_shows = t_site + "/shows"
 
+// fetch url, returning either a parsed goquery Document or an error.
 func fetch(url string) (*goquery.Document, error) {
 	var doc *goquery.Document
 
@@ -21,8 +23,9 @@ func fetch(url string) (*goquery.Document, error) {
 		return doc, errors.Wrapf(err, "Failed to fetch: `%s'", url)
 	}
 	defer res.Body.Close()
+
 	if res.StatusCode != 200 {
-		return doc, errors.Errorf("`%s' status code error: %d %s", url, res.StatusCode, res.Status)
+		return doc, errors.Errorf("`%s' error: %s", url, res.Status)
 	}
 
 	// Load the document
@@ -30,28 +33,39 @@ func fetch(url string) (*goquery.Document, error) {
 	if err != nil {
 		return doc, errors.Wrapf(err, "Failed to parse `%s'", url)
 	}
+
 	return doc, nil
 }
 
+// Given a url to an xray show, create a Feed from it
 func make_feed(url string) (feeds.Feed, error) {
 	var feed feeds.Feed
 
 	doc, err := fetch(url)
 	if err != nil {
-		return feed, errors.Wrapf(err, "Failed to fetch `%s'", url)
+		return feed, errors.Wrap(err, "Failed to download show page")
 	}
 
 	feed.Title = doc.Find("h1.main-title").Text()
 	feed.Author = &feeds.Author{Name: doc.Find("div.hosts-container").Text()}
 	feed.Link = &feeds.Link{Href: url}
 
-	// Find shows
+	// Find episodes
 	doc.Find("div.broadcast.cfm-has-audio > div.info > div.title > a").Each(func(i int, s *goquery.Selection) {
 		// Find the link and title
-		link, _ := s.Attr("href")
-		item, _ := make_item(t_site + link)
+		link, exists := s.Attr("href")
+		if !exists {
+			log.Printf("Can't find episode href for `%s'", url)
+			return // Skip
+		}
+		item, err := make_item(t_site + link)
+		if err != nil {
+			log.Printf("Couldn't make Item for `%s': %s", url, err)
+			return // Skip
+		}
 		feed.Items = append(feed.Items, &item)
 	})
+
 	return feed, nil
 }
 
@@ -64,7 +78,10 @@ func make_item(url string) (feeds.Item, error) {
 	}
 
 	node := doc.Find("a.player")
-	enclosure_url, _ := node.Attr("href")
+	enclosure_url, exists := node.Attr("href")
+	if !exists {
+		return itm, errors.New("Couldn't find a.player href attr")
+	}
 
 	itm.Title = node.Text()
 	itm.Link = &feeds.Link{Href: url, Rel: "canonical"}
@@ -74,33 +91,42 @@ func make_item(url string) (feeds.Item, error) {
 	return itm, nil
 }
 
-func main() {
-	shows := []string{"heavy-metal-sewing-circle", "gothique-boutique", "sfutf"}
 
-	for _, show := range shows {
+
+func main() {
+	exit_status := 0
+	verbose := true
+
+	for _, show := range os.Args[1:] {
 		url := t_shows + "/" + show
 		feed_file := show + ".xml"
-		fmt.Printf("%s -> %s\n", url, feed_file)
+		if verbose {
+			fmt.Printf("%s -> %s\n", url, feed_file)
+		}
 
 		f, err := os.Create(feed_file)
 		if err != nil {
 			log.Printf("Failed to open `%s': %s", feed_file, err)
+			exit_status++
 			continue
 		}
 
 		feed, err := make_feed(url)
 		if err != nil {
-			log.Printf("Failed to generate feed for `%s': %s", url, err)
+			log.Printf("Failed to generate feed: %s", err)
+			exit_status++
 			continue
 		}
 
 		feed_s, err := feed.ToAtom()
 		if err != nil {
-			log.Printf("Failed to generate feed for `%s': %s", url, err)
+			log.Printf("Failed to generate feed: %s", err)
+			exit_status++
 			continue
 		}
 
 		f.WriteString(feed_s)
 		f.Close()
 	}
+	os.Exit(exit_status)
 }

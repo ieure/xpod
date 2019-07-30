@@ -85,13 +85,15 @@ func make_item(url string) (feeds.Item, error) {
 
 	itm.Title = node.Text()
 	itm.Link = &feeds.Link{Href: url, Rel: "canonical"}
-	itm.Enclosure = &feeds.Enclosure{Url: enclosure_url}
+	itm.Enclosure = &feeds.Enclosure{
+		Url:    enclosure_url,
+		Length: "unknown",
+		Type:   "audio/mpeg",
+	}
 	itm.Content = doc.Find("div.creek-playlist").Text()
 
 	return itm, nil
 }
-
-
 
 func main() {
 	exit_status := 0
@@ -99,7 +101,7 @@ func main() {
 
 	for _, show := range os.Args[1:] {
 		url := t_shows + "/" + show
-		feed_file := show + ".xml"
+		feed_file := show + ".rss"
 		if verbose {
 			fmt.Printf("%s -> %s\n", url, feed_file)
 		}
@@ -118,14 +120,7 @@ func main() {
 			continue
 		}
 
-		feed_s, err := feed.ToRss()
-		if err != nil {
-			log.Printf("Failed to generate feed: %s", err)
-			exit_status++
-			continue
-		}
-
-		f.WriteString(feed_s)
+		feed.WriteRss(f) // Or .WriteAtom
 		f.Close()
 	}
 	os.Exit(exit_status)

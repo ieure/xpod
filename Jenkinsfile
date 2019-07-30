@@ -25,7 +25,8 @@ pipeline {
         stage('Upload feeds') {
             steps {
                 sshPublisher(publishers: [sshPublisherDesc(configName: 'proton-ieure-public',
-                                                           transfers: [sshTransfer(sourceFiles: '*.xml')])])
+                                                           transfers: [sshTransfer(sourceFiles: '*.xml'),
+                                                                       sshTransfer(sourceFiles: '*.rss')])])
             }
         }
     }

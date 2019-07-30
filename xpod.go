@@ -118,7 +118,7 @@ func main() {
 			continue
 		}
 
-		feed_s, err := feed.ToAtom()
+		feed_s, err := feed.ToRss()
 		if err != nil {
 			log.Printf("Failed to generate feed: %s", err)
 			exit_status++

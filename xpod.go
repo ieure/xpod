@@ -2,6 +2,7 @@
 package main
 
 import (
+	"time"
 	"fmt"
 	"github.com/PuerkitoBio/goquery"
 	"github.com/gorilla/feeds"
@@ -81,6 +82,16 @@ func make_item(url string) (feeds.Item, error) {
 	enclosure_url, exists := node.Attr("href")
 	if !exists {
 		return itm, errors.New("Couldn't find a.player href attr")
+	}
+
+	time_s := doc.Find("div.date").Text()
+	if time_s != "" {
+		ts, err := time.Parse("3:00pm, 1-2-2006", time_s)
+		if (err != nil) {
+			log.Printf("Couldn't figure out how to parse timestamp `%s'", time_s)
+		} else {
+			itm.Created = ts
+		}
 	}
 
 	itm.Title = node.Text()

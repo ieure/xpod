@@ -2,7 +2,6 @@
 package main
 
 import (
-	"time"
 	"fmt"
 	"github.com/PuerkitoBio/goquery"
 	"github.com/gorilla/feeds"
@@ -10,46 +9,47 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 )
 
 var t_site = "https://xray.fm"
 var t_shows = t_site + "/shows"
 
 // fetch url, returning either a parsed goquery Document or an error.
-func fetch(url string) (*goquery.Document, error) {
+func fetch(url string) (*http.Response, *goquery.Document, error) {
 	var doc *goquery.Document
 
-	res, err := http.Get(url)
+	resp, err := http.Get(url)
 	if err != nil {
-		return doc, errors.Wrapf(err, "Failed to fetch: `%s'", url)
+		return nil, nil, errors.Wrapf(err, "Failed to fetch: `%s'", url)
 	}
-	defer res.Body.Close()
+	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, nil, errors.Errorf("`%s' error: %s", url, resp.Status)
 	}
 
 	// Load the document
-	doc, err = goquery.NewDocumentFromReader(res.Body)
+	doc, err = goquery.NewDocumentFromReader(resp.Body)
 	if err != nil {
-		return doc, errors.Wrapf(err, "Failed to parse `%s'", url)
+		return nil, nil, errors.Wrapf(err, "Failed to parse `%s'", url)
 	}
 
-	return doc, nil
+	return resp, doc, nil
 }
 
 // Given a url to an xray show, create a Feed from it
-func make_feed(url string) (feeds.Feed, error) {
-	var feed feeds.Feed
-
-	doc, err := fetch(url)
+func make_feed(url string) (*feeds.Feed, error) {
+	_, doc, err := fetch(url)
 	if err != nil {
-		return feed, errors.Wrap(err, "Failed to download show page")
+		return nil, errors.Wrap(err, "Failed to download show page")
 	}
 
-	feed.Title = doc.Find("h1.main-title").Text()
-	feed.Author = &feeds.Author{Name: doc.Find("div.hosts-container").Text()}
-	feed.Link = &feeds.Link{Href: url}
+	feed := feeds.Feed{
+		Title:  doc.Find("h1.main-title").Text(),
+		Author: &feeds.Author{Name: doc.Find("div.hosts-container").Text()},
+		Link:   &feeds.Link{Href: url},
+	}
 
 	// Find episodes
 	doc.Find("div.broadcast.cfm-has-audio > div.info > div.title > a").Each(func(i int, s *goquery.Selection) {
@@ -64,46 +64,62 @@ func make_feed(url string) (feeds.Feed, error) {
 			log.Printf("Couldn't make Item for `%s': %s", url, err)
 			return // Skip
 		}
-		feed.Items = append(feed.Items, &item)
+		feed.Items = append(feed.Items, item)
 	})
 
-	return feed, nil
+	return &feed, nil
 }
 
-func make_item(url string) (feeds.Item, error) {
-	var itm feeds.Item
+// Parse a timestamp string into a time.Time
+// If parsing fails, return the zero-value timestamp.
+func parse_time(time_s string) (time.Time, error) {
+	var ts time.Time
 
-	doc, err := fetch(url)
+	ts, err := time.Parse("3:00pm, 1-2-2006", time_s)
 	if err != nil {
-		return itm, errors.Wrapf(err, "Failed to get episode page `%s'", url)
+		return ts, errors.Errorf("Failed to parse timestamp `%s'", time_s)
+	}
+
+	return ts, nil
+}
+
+// Create a feed Item from the URL to an episode of a show.
+func make_item(url string) (*feeds.Item, error) {
+	resp, doc, err := fetch(url)
+	if err != nil {
+		return nil, errors.Wrapf(err, "Failed to get episode page `%s'", url)
 	}
 
 	node := doc.Find("a.player")
-	enclosure_url, exists := node.Attr("href")
+	enclosure_link, exists := node.Attr("href")
 	if !exists {
-		return itm, errors.New("Couldn't find a.player href attr")
+		return nil, errors.New("Couldn't find a.player href attr")
 	}
 
-	time_s := doc.Find("div.date").Text()
-	if time_s != "" {
-		ts, err := time.Parse("3:00pm, 1-2-2006", time_s)
-		if (err != nil) {
-			log.Printf("Couldn't figure out how to parse timestamp `%s'", time_s)
-		} else {
-			itm.Created = ts
-		}
+	enclosure_url := enclosure_link
+	parsed_url, err := resp.Request.URL.Parse(enclosure_link)
+	if err != nil {
+		enclosure_url = parsed_url.String()
 	}
 
-	itm.Title = node.Text()
-	itm.Link = &feeds.Link{Href: url, Rel: "canonical"}
-	itm.Enclosure = &feeds.Enclosure{
-		Url:    enclosure_url,
-		Length: "unknown",
-		Type:   "audio/mpeg",
+	created, err := parse_time(doc.Find("div.date").Text())
+	if err != nil {
+		log.Printf("Falling back to nil timestamp: %s", err)
 	}
-	itm.Content = doc.Find("div.creek-playlist").Text()
 
-	return itm, nil
+	itm := feeds.Item{
+		Title:   node.Text(),
+		Created: created,
+		Link:    &feeds.Link{Href: url, Rel: "canonical"},
+		Enclosure: &feeds.Enclosure{
+			Url:    enclosure_url,
+			Length: "unknown",
+			Type:   "audio/mpeg",
+		},
+		Content: doc.Find("div.creek-playlist").Text(),
+	}
+
+	return &itm, nil
 }
 
 func main() {

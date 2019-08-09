@@ -25,8 +25,8 @@ func fetch(url string) (*goquery.Document, error) {
 	}
 	defer res.Body.Close()
 
-	if res.StatusCode != 200 {
-		return doc, errors.Errorf("`%s' error: %s", url, res.Status)
+	if resp.StatusCode != http.StatusOK {
+		return nil, nil, errors.Errorf("`%s' error: %s", url, resp.Status)
 	}
 
 	// Load the document

@@ -1,0 +1,23 @@
+* XPod
+  :PROPERTIES:
+  :ID:       bc9a378f-209f-43f8-a726-20e9b576e295
+  :END:
+
+  XPod creates podcast feeds for [[https://xray.fm][XRay.fm]] shows.
+
+** Usage
+   :PROPERTIES:
+   :ID:       0735536a-34f6-438b-835c-22f0a9c869b0
+   :END:
+
+   To create a feed, you need to know the slug of the show, which is
+   the last component of the URL for the show’s page.  Example, [[https://xray.fm/shows/sfutf][Songs
+   From Under the Floorboard]] =https://xray.fm/shows/sfutf=, so the
+   slug is =sfutf=.
+
+   #+BEGIN_SRC shell
+     xpod {show-slug}
+   #+END_SRC
+
+   This will create a ={show-slug}.xml= file containing an Atom feed
+   of episodes.
